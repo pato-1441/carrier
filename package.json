@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "node --enable-source-maps dist/index.js",
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/test/**/*.test.js"
+    "test": "pnpm run build && node --test dist/test/**/*.test.js"
   },
   "dependencies": {
     "@faker-js/faker": "^10.1.0",
