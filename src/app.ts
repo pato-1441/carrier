@@ -14,6 +14,31 @@ import type { McValidationResult } from "./types.js";
 export const app = new Hono();
 
 app.use("*", async (c, next) => {
+  const startedAt = performance.now();
+  const requestId = crypto.randomUUID();
+  const { method } = c.req;
+  const url = new URL(c.req.url);
+
+  c.header("x-request-id", requestId);
+
+  try {
+    await next();
+  } finally {
+    const durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
+
+    console.log(
+      JSON.stringify({
+        request_id: requestId,
+        method,
+        path: url.pathname,
+        status: c.res.status,
+        duration_ms: durationMs,
+      })
+    );
+  }
+});
+
+app.use("*", async (c, next) => {
   const requiredApiKey = process.env.API_KEY;
   const apiKey = c.req.header("x-api-key");
 

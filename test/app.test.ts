@@ -17,6 +17,7 @@ describe("API key protection", () => {
 
     const body = (await response.json()) as Record<string, unknown>;
     assert.equal(body.error, "Unauthorized");
+    assert.ok(response.headers.get("x-request-id"));
   });
 });
 
@@ -45,6 +46,7 @@ describe("GET /loads/:referenceNumber", () => {
       "weight",
     ]);
     assert.equal(body.load_id, "ABC12345");
+    assert.ok(response.headers.get("x-request-id"));
   });
 
   it("rejects an invalid reference number format", async () => {
