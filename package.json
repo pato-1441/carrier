@@ -5,20 +5,31 @@
   "type": "module",
   "packageManager": "pnpm@10.25.0",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "pnpm run build:client && tsx watch src/index.ts",
+    "dev:client": "vite",
     "start": "node --enable-source-maps dist/src/index.js",
-    "build": "tsc -p tsconfig.json",
+    "build:server": "tsc -p tsconfig.json",
+    "build:client": "vite build",
+    "build": "pnpm run build:server && pnpm run build:client",
     "test": "pnpm run build && node --test dist/test/**/*.test.js"
   },
   "dependencies": {
     "@faker-js/faker": "^10.1.0",
     "@hono/node-server": "^1.19.4",
     "dotenv": "^17.4.2",
-    "hono": "^4.10.1"
+    "hono": "^4.10.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
     "@types/node": "^24.10.1",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "tailwindcss": "^4.3.0",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^8.0.14"
   }
 }

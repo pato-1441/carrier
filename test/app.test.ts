@@ -1,11 +1,28 @@
-import { describe, it, mock } from "node:test";
+import { after, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { app } from "../src/app.js";
+import type { AnalyticsEvent } from "../src/types.js";
 
 const AUTH_HEADERS = {
   "x-api-key": "duckyapikeyhappyrobot21may",
 };
+const analyticsDirectory = mkdtempSync(join(tmpdir(), "carrier-happyrobot-"));
+const analyticsFilePath = join(analyticsDirectory, "request-analytics.json");
+
+process.env.ANALYTICS_FILE_PATH = analyticsFilePath;
+
+beforeEach(async () => {
+  await writeFile(analyticsFilePath, "[]");
+});
+
+after(async () => {
+  await rm(analyticsDirectory, { recursive: true, force: true });
+});
 
 describe("API key protection", () => {
   it("returns 401 when the API key is missing", async () => {
@@ -18,6 +35,66 @@ describe("API key protection", () => {
     const body = (await response.json()) as Record<string, unknown>;
     assert.equal(body.error, "Unauthorized");
     assert.ok(response.headers.get("x-request-id"));
+  });
+
+  it("allows the analytics dashboard without an API key", async () => {
+    process.env.API_KEY = "duckyapikeyhappyrobot21may";
+
+    const response = await app.request("/analytics");
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /text\/html/);
+    assert.match(await response.text(), /HappyRobot Analytics/);
+  });
+});
+
+describe("GET /analytics/data", () => {
+  it("returns dashboard aggregates from the local analytics file", async () => {
+    const events: AnalyticsEvent[] = [
+      {
+        request_id: "req_ok",
+        timestamp: new Date().toISOString(),
+        method: "GET",
+        path: "/loads/ABC12345",
+        status_code: 200,
+        duration_ms: 120,
+        event_type: "load_lookup",
+        input: "ABC12345",
+        normalized_input: "ABC12345",
+        valid_format: true,
+        load_id: "ABC12345",
+      },
+      {
+        request_id: "req_err",
+        timestamp: new Date().toISOString(),
+        method: "GET",
+        path: "/mc/MC123456/validate",
+        status_code: 502,
+        duration_ms: 680,
+        event_type: "mc_validation",
+        input: "MC123456",
+        normalized_input: "MC123456",
+        valid_format: true,
+        found: false,
+        docket_number: "123456",
+        error: "FMCSA unavailable",
+      },
+    ];
+
+    await writeFile(analyticsFilePath, JSON.stringify(events, null, 2));
+
+    const response = await app.request("/analytics/data?range=24h");
+
+    assert.equal(response.status, 200);
+
+    const body = (await response.json()) as Record<string, unknown>;
+    const totals = body.totals as Record<string, unknown>;
+    const endpoints = body.endpoints as Array<Record<string, unknown>>;
+
+    assert.equal(totals.total_requests, 2);
+    assert.equal(totals.error_5xx, 1);
+    assert.equal(endpoints.length, 2);
+    assert.equal(endpoints[0]?.endpoint, "/loads/:referenceNumber");
   });
 });
 
@@ -47,6 +124,18 @@ describe("GET /loads/:referenceNumber", () => {
     ]);
     assert.equal(body.load_id, "ABC12345");
     assert.ok(response.headers.get("x-request-id"));
+
+    const events = JSON.parse(
+      await readFile(analyticsFilePath, "utf8")
+    ) as AnalyticsEvent[];
+    const [event] = events;
+
+    assert.equal(events.length, 1);
+    assert.equal(event.event_type, "load_lookup");
+    assert.equal(event.input, "ABC12345");
+    assert.equal(event.load_id, "ABC12345");
+    assert.equal(event.status_code, 200);
+    assert.equal(event.valid_format, true);
   });
 
   it("rejects an invalid reference number format", async () => {

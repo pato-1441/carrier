@@ -3,6 +3,7 @@ import "dotenv/config";
 import { serve } from "@hono/node-server";
 
 import { app } from "./app.js";
+import { logger } from "./lib/logger.js";
 
 const port = Number(process.env.PORT ?? 3000);
 
@@ -12,6 +13,6 @@ serve(
     port,
   },
   (info) => {
-    console.log(`Server running on http://localhost:${info.port}`);
+    logger.serverStarted(info.port);
   }
 );
