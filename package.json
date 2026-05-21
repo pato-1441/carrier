@@ -1,0 +1,23 @@
+{
+  "name": "carrier-happyrobot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node --enable-source-maps dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/**/*.test.js"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^10.1.0",
+    "@hono/node-server": "^1.19.4",
+    "dotenv": "^17.4.2",
+    "hono": "^4.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
