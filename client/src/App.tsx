@@ -21,6 +21,8 @@ export function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const deferredSearch = useDeferredValue(search);
   const normalizedQuery = deferredSearch.trim().toLowerCase();
+  const isInitialLoading = isLoading && data === null;
+  const isRefreshing = isLoading && data !== null;
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -35,7 +37,10 @@ export function App() {
 
     async function loadDashboard() {
       setIsLoading(true);
-      setErrorMessage(null);
+
+      if (data === null) {
+        setErrorMessage(null);
+      }
 
       try {
         const response = await fetch(`/analytics/data?range=${encodeURIComponent(range)}`, {
@@ -125,7 +130,9 @@ export function App() {
 
             <div className="flex items-center gap-3">
               <span className="text-sm text-zinc-500">
-                {data ? `Updated ${formatDateTime(data.generated_at)}` : "Loading analytics"}
+                {data
+                  ? `${isRefreshing ? "Refreshing" : "Updated"} ${formatDateTime(data.generated_at)}`
+                  : "Loading analytics"}
               </span>
               {data?.alert && hasAnalytics ? (
                 <div className="flex items-center gap-3 border border-zinc-200 px-3 py-1.5">
@@ -164,50 +171,61 @@ export function App() {
           <MetricCard
             label="Total requests"
             value={data ? compactNumber(data.totals.total_requests) : "—"}
+            isLoading={isInitialLoading}
           />
           <MetricCard
             label="Success rate"
             value={data ? formatPercent(data.totals.success_rate) : "—"}
+            isLoading={isInitialLoading}
           />
           <MetricCard
             label="Average latency"
             value={data ? formatLatency(data.totals.avg_latency_ms) : "—"}
+            isLoading={isInitialLoading}
           />
           <MetricCard
             label="P95 latency"
             value={data ? formatLatency(data.totals.p95_latency_ms) : "—"}
+            isLoading={isInitialLoading}
           />
           <MetricCard
             label="4xx errors"
             value={data ? numberFormat(data.totals.error_4xx) : "—"}
+            isLoading={isInitialLoading}
           />
           <MetricCard
             label="5xx errors"
             value={data ? numberFormat(data.totals.error_5xx) : "—"}
+            isLoading={isInitialLoading}
           />
           <MetricCard
             label="Agent outcomes"
             value={data ? compactNumber(data.totals.total_agent_outcomes) : "—"}
+            isLoading={isInitialLoading}
           />
           <MetricCard
             label="Sentiments logged"
             value={data ? compactNumber(data.totals.total_carrier_sentiments) : "—"}
+            isLoading={isInitialLoading}
           />
           <MetricCard
             label="Avg call duration"
             value={data ? formatCallDuration(data.totals.avg_call_duration_ms) : "—"}
+            isLoading={isInitialLoading}
           />
           <MetricCard
             label="Accepted offer total"
             value={data ? formatCurrency(data.totals.total_accepted_offer_value) : "—"}
+            isLoading={isInitialLoading}
           />
           <MetricCard
             label="Avg counteroffers"
             value={data ? data.totals.avg_counteroffer_retries.toFixed(1) : "—"}
+            isLoading={isInitialLoading}
           />
         </section>
 
-        {!hasAnalytics && !isLoading ? (
+        {!hasAnalytics && !isInitialLoading ? (
           <section className="border border-dashed border-zinc-300 bg-white px-6 py-10 text-center">
             <h2 className="text-base font-semibold text-zinc-900">No analytics yet</h2>
             <p className="mt-2 text-sm text-zinc-500">
@@ -496,11 +514,27 @@ export function App() {
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
+function MetricCard({
+  label,
+  value,
+  isLoading = false,
+}: {
+  label: string;
+  value: string;
+  isLoading?: boolean;
+}) {
   return (
     <article className="border border-zinc-200 bg-white p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</p>
-      <p className="mt-3 text-2xl font-semibold text-zinc-950">{value}</p>
+      <p
+        className={
+          isLoading
+            ? "mt-3 min-h-[2rem] w-full max-w-[8rem] animate-pulse bg-zinc-200 text-transparent"
+            : "mt-3 min-h-[2rem] text-2xl font-semibold text-zinc-950"
+        }
+      >
+        {value}
+      </p>
     </article>
   );
 }
