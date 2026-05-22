@@ -195,42 +195,16 @@ app.get("/mc/:mcNumber/validate", async (c) => {
   }
 });
 
+app.get("/loads", (c) => {
+  return respondToMissingLoadReference(c);
+});
+
+app.get("/loads/", (c) => {
+  return respondToMissingLoadReference(c);
+});
+
 app.get("/loads/:referenceNumber", (c) => {
-  const input = c.req.param("referenceNumber");
-  const normalizedReference = normalizeLoadReference(input);
-
-  if (!isValidLoadReference(normalizedReference)) {
-    c.set("analyticsEvent", {
-      event_type: "load_lookup",
-      input,
-      normalized_input: normalizedReference,
-      valid_format: false,
-      error:
-        "Reference number must match the format ABC12345 (3 letters followed by 5 digits).",
-    });
-
-    return c.json(
-      {
-        input,
-        valid_format: false,
-        error:
-          "Reference number must match the format ABC12345 (3 letters followed by 5 digits).",
-      },
-      400
-    );
-  }
-
-  const load = buildLoadFromReference(normalizedReference);
-
-  c.set("analyticsEvent", {
-    event_type: "load_lookup",
-    input,
-    normalized_input: normalizedReference,
-    valid_format: true,
-    load_id: load.load_id,
-  });
-
-  return c.json(load);
+  return respondToLoadLookup(c, c.req.param("referenceNumber"));
 });
 
 app.post("/webhooks/agent-outcome", async (c) => {
@@ -360,6 +334,62 @@ async function serveAnalyticsFrontend(c: Context, relativePath: string) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function respondToMissingLoadReference(c: Context) {
+  c.set("analyticsEvent", {
+    event_type: "load_lookup",
+    input: "",
+    normalized_input: "",
+    valid_format: false,
+    error: "Reference number is required and must match the format ABC12345.",
+  });
+
+  return c.json(
+    {
+      input: "",
+      valid_format: false,
+      error: "Reference number is required and must match the format ABC12345.",
+    },
+    400
+  );
+}
+
+function respondToLoadLookup(c: Context, input: string) {
+  const normalizedReference = normalizeLoadReference(input);
+
+  if (!isValidLoadReference(normalizedReference)) {
+    c.set("analyticsEvent", {
+      event_type: "load_lookup",
+      input,
+      normalized_input: normalizedReference,
+      valid_format: false,
+      error:
+        "Reference number must match the format ABC12345 (3 letters followed by 5 digits).",
+    });
+
+    return c.json(
+      {
+        input,
+        valid_format: false,
+        error:
+          "Reference number must match the format ABC12345 (3 letters followed by 5 digits).",
+      },
+      400
+    );
+  }
+
+  const load = buildLoadFromReference(normalizedReference);
+
+  c.set("analyticsEvent", {
+    event_type: "load_lookup",
+    input,
+    normalized_input: normalizedReference,
+    valid_format: true,
+    load_id: load.load_id,
+  });
+
+  return c.json(load);
 }
 
 function toOptionalString(value: unknown): string | undefined {

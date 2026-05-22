@@ -169,6 +169,20 @@ describe("GET /loads/:referenceNumber", () => {
     const body = (await response.json()) as Record<string, unknown>;
     assert.equal(body.valid_format, false);
   });
+
+  it("rejects a missing reference number with a helpful 400 response", async () => {
+    process.env.API_KEY = "duckyapikeyhappyrobot21may";
+
+    const response = await app.request("/loads/", {
+      headers: AUTH_HEADERS,
+    });
+
+    assert.equal(response.status, 400);
+
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.valid_format, false);
+    assert.equal(body.error, "Reference number is required and must match the format ABC12345.");
+  });
 });
 
 describe("GET /mc/:mcNumber/validate", () => {
