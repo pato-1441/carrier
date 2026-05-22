@@ -264,6 +264,7 @@ app.post("/webhooks/agent-outcome", async (c) => {
   }
 
   const outcomeReasoning = toOptionalString(payload.outcome_reasoning);
+  const carrierSentiment = normalizeCarrierSentiment(payload.carrier_sentiment);
   const declineReason = toOptionalString(payload.decline_reason);
   const callDurationMs = toOptionalNumber(payload.call_duration);
   const acceptedOfferValue = toOptionalNumber(payload.accepted_offer_value);
@@ -278,6 +279,7 @@ app.post("/webhooks/agent-outcome", async (c) => {
     normalized_input: normalizedClassification,
     outcome_classification: normalizedClassification,
     outcome_reasoning: outcomeReasoning,
+    carrier_sentiment: carrierSentiment,
     call_duration_ms: callDurationMs,
     accepted_offer_value: acceptedOfferValue,
     decline_reason: declineReason,
@@ -290,6 +292,7 @@ app.post("/webhooks/agent-outcome", async (c) => {
       received: {
         outcome_classification: normalizedClassification,
         outcome_reasoning: outcomeReasoning ?? null,
+        carrier_sentiment: carrierSentiment ?? null,
         call_duration_ms: callDurationMs,
         accepted_offer_value: acceptedOfferValue,
         decline_reason: declineReason ?? null,
@@ -403,6 +406,12 @@ function toOptionalString(value: unknown): string | undefined {
 }
 
 function normalizeOutcomeClassification(value: unknown): string | undefined {
+  const normalizedValue = toOptionalString(value);
+
+  return normalizedValue ? normalizedValue.toLowerCase() : undefined;
+}
+
+function normalizeCarrierSentiment(value: unknown): string | undefined {
   const normalizedValue = toOptionalString(value);
 
   return normalizedValue ? normalizedValue.toLowerCase() : undefined;

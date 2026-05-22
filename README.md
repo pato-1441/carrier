@@ -106,7 +106,7 @@ Redirects to `/analytics`.
 
 ### `GET /mc/:mcNumber/validate`
 
-Validates MC numbers in the format `MC123456`.
+Validates MC numbers and normalizes common input variants like `MC123456`, `MC-123456`, or `123456`.
 
 Example:
 
@@ -117,7 +117,7 @@ curl -i http://localhost:3000/mc/MC654321/validate \
 
 ### `GET /loads/:referenceNumber`
 
-Returns fake load data for a reference number in the format `ABC12345`.
+Returns fake load data for a reference number and normalizes common variants like `ABC12345` or `ABC-12345`.
 
 Example:
 
@@ -156,6 +156,7 @@ curl -i http://localhost:3000/webhooks/agent-outcome \
   -d '{
     "outcome_classification": "not_interested",
     "outcome_reasoning": "No conversation content provided; cannot determine outcome.",
+    "carrier_sentiment": "neutral",
     "call_duration": 74905,
     "accepted_offer_value": 12300,
     "decline_reason": "Out of salary range.",
@@ -167,6 +168,7 @@ Accepted payload fields:
 
 - `outcome_classification` required
 - `outcome_reasoning` optional
+- `carrier_sentiment` optional
 - `call_duration` optional, stored as milliseconds
 - `accepted_offer_value` optional
 - `decline_reason` optional
@@ -197,7 +199,7 @@ Optional query parameter:
 - `range=24h`
 - `range=7d`
 
-The JSON response now includes webhook-driven aggregates such as `outcome_breakdown`, `decline_reasons`, and outcome totals inside `totals`.
+The JSON response now includes webhook-driven aggregates such as `outcome_breakdown`, `carrier_sentiments`, `decline_reasons`, and outcome totals inside `totals`.
 
 ## Common errors
 

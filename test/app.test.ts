@@ -88,6 +88,7 @@ describe("GET /analytics/data", () => {
         input: "success",
         normalized_input: "success",
         outcome_classification: "success",
+        carrier_sentiment: "positive",
         call_duration_ms: 74905,
         accepted_offer_value: 12300,
         counteroffer_retries: 2,
@@ -104,15 +105,18 @@ describe("GET /analytics/data", () => {
     const totals = body.totals as Record<string, unknown>;
     const endpoints = body.endpoints as Array<Record<string, unknown>>;
     const outcomeBreakdown = body.outcome_breakdown as Array<Record<string, unknown>>;
+    const carrierSentiments = body.carrier_sentiments as Array<Record<string, unknown>>;
     const trend = body.trend as Array<Record<string, unknown>>;
 
     assert.equal(totals.total_requests, 3);
     assert.equal(totals.error_5xx, 1);
     assert.equal(totals.total_agent_outcomes, 1);
+    assert.equal(totals.total_carrier_sentiments, 1);
     assert.equal(totals.total_accepted_offer_value, 12300);
     assert.equal(endpoints.length, 3);
     assert.equal(endpoints[0]?.endpoint, "/loads/:referenceNumber");
     assert.equal(outcomeBreakdown[0]?.classification, "success");
+    assert.equal(carrierSentiments[0]?.sentiment, "positive");
     assert.equal(trend.some((point) => point.agent_outcomes === 1), true);
   });
 });
@@ -157,6 +161,19 @@ describe("GET /loads/:referenceNumber", () => {
     assert.equal(event.valid_format, true);
   });
 
+  it("normalizes hyphenated reference numbers before lookup", async () => {
+    process.env.API_KEY = "duckyapikeyhappyrobot21may";
+
+    const response = await app.request("/loads/abc-12345", {
+      headers: AUTH_HEADERS,
+    });
+
+    assert.equal(response.status, 200);
+
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.load_id, "ABC12345");
+  });
+
   it("rejects an invalid reference number format", async () => {
     process.env.API_KEY = "duckyapikeyhappyrobot21may";
 
@@ -188,10 +205,15 @@ describe("GET /loads/:referenceNumber", () => {
 describe("GET /mc/:mcNumber/validate", () => {
   it("rejects invalid MC formats before calling FMCSA", async () => {
     process.env.API_KEY = "duckyapikeyhappyrobot21may";
+    const fetchMock = mock.method(globalThis, "fetch", async () => {
+      throw new Error("fetch should not be called for invalid MC input");
+    });
 
-    const response = await app.request("/mc/12345/validate", {
+    const response = await app.request("/mc/ABC123/validate", {
       headers: AUTH_HEADERS,
     });
+
+    fetchMock.mock.restore();
 
     assert.equal(response.status, 400);
 
@@ -246,6 +268,68 @@ describe("GET /mc/:mcNumber/validate", () => {
     assert.equal(body.found, true);
     assert.equal(body.normalized_mc_number, "MC654321");
   });
+
+  it("normalizes digits-only MC input before lookup", async () => {
+    process.env.FMCSA_WEB_KEY = "test-key";
+    process.env.API_KEY = "duckyapikeyhappyrobot21may";
+
+    const restoreFetch = mock.method(globalThis, "fetch", async (input: RequestInfo | URL) => {
+      assert.match(String(input), /docket-number\/892312/);
+
+      return new Response(JSON.stringify({ content: [] }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    });
+
+    const response = await app.request("/mc/892312/validate", {
+      headers: AUTH_HEADERS,
+    });
+
+    restoreFetch.mock.restore();
+
+    assert.equal(response.status, 200);
+
+    const body = (await response.json()) as Record<string, unknown>;
+
+    assert.equal(body.valid_format, true);
+    assert.equal(body.found, false);
+    assert.equal(body.normalized_mc_number, "MC892312");
+    assert.equal(body.docket_number, "892312");
+  });
+
+  it("normalizes hyphenated MC input before lookup", async () => {
+    process.env.FMCSA_WEB_KEY = "test-key";
+    process.env.API_KEY = "duckyapikeyhappyrobot21may";
+
+    const restoreFetch = mock.method(globalThis, "fetch", async (input: RequestInfo | URL) => {
+      assert.match(String(input), /docket-number\/343521/);
+
+      return new Response(JSON.stringify({ content: [] }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    });
+
+    const response = await app.request("/mc/MC-343521/validate", {
+      headers: AUTH_HEADERS,
+    });
+
+    restoreFetch.mock.restore();
+
+    assert.equal(response.status, 200);
+
+    const body = (await response.json()) as Record<string, unknown>;
+
+    assert.equal(body.valid_format, true);
+    assert.equal(body.found, false);
+    assert.equal(body.normalized_mc_number, "MC343521");
+    assert.equal(body.docket_number, "343521");
+  });
 });
 
 describe("POST /webhooks/agent-outcome", () => {
@@ -262,6 +346,7 @@ describe("POST /webhooks/agent-outcome", () => {
         outcome_classification: "Not_Interested",
         outcome_reasoning:
           "No conversation content provided; cannot determine outcome, treating as not interested due to missing information.",
+        carrier_sentiment: "Neutral",
         call_duration: "74905",
         accepted_offer_value: "12300",
         decline_reason: "Out of salary range.",
@@ -275,6 +360,7 @@ describe("POST /webhooks/agent-outcome", () => {
     const received = body.received as Record<string, unknown>;
 
     assert.equal(received.outcome_classification, "not_interested");
+    assert.equal(received.carrier_sentiment, "neutral");
     assert.equal(received.call_duration_ms, 74905);
     assert.equal(received.accepted_offer_value, 12300);
     assert.equal(received.counteroffer_retries, 2);
@@ -287,6 +373,7 @@ describe("POST /webhooks/agent-outcome", () => {
     assert.equal(events.length, 1);
     assert.equal(event.event_type, "agent_outcome");
     assert.equal(event.outcome_classification, "not_interested");
+    assert.equal(event.carrier_sentiment, "neutral");
     assert.equal(event.call_duration_ms, 74905);
     assert.equal(event.accepted_offer_value, 12300);
     assert.equal(event.decline_reason, "Out of salary range.");

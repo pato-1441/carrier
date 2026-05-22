@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 
 import type {
   AnalyticsAlert,
+  AnalyticsCarrierSentimentSummary,
   AnalyticsDashboardData,
   AnalyticsDeclineReasonSummary,
   AnalyticsEndpointSummary,
@@ -64,6 +65,7 @@ export async function getAnalyticsDashboardData(
     status_breakdown: buildStatusBreakdown(filteredEvents),
     endpoints: buildEndpointSummaries(filteredEvents),
     outcome_breakdown: buildOutcomeBreakdown(filteredEvents),
+    carrier_sentiments: buildCarrierSentiments(filteredEvents),
     decline_reasons: buildDeclineReasons(filteredEvents),
     trend: buildTrend(filteredEvents, range, now),
     recent_requests: sortedEvents.slice(0, 20).map(toRecentRequest),
@@ -113,6 +115,9 @@ function buildTotals(events: AnalyticsEvent[]): AnalyticsDashboardData["totals"]
   ).length;
   const error5xx = events.filter((event) => event.status_code >= 500).length;
   const outcomeEvents = events.filter((event) => event.event_type === "agent_outcome");
+  const sentimentEvents = outcomeEvents.filter(
+    (event) => typeof event.carrier_sentiment === "string" && event.carrier_sentiment.trim().length > 0
+  );
 
   return {
     total_requests: totalRequests,
@@ -122,6 +127,7 @@ function buildTotals(events: AnalyticsEvent[]): AnalyticsDashboardData["totals"]
     error_4xx: error4xx,
     error_5xx: error5xx,
     total_agent_outcomes: outcomeEvents.length,
+    total_carrier_sentiments: sentimentEvents.length,
     avg_call_duration_ms: average(
       outcomeEvents.map((event) => event.call_duration_ms).filter(isNumber)
     ),
@@ -284,6 +290,29 @@ function buildDeclineReasons(events: AnalyticsEvent[]): AnalyticsDeclineReasonSu
     .sort((left, right) => right.count - left.count);
 }
 
+function buildCarrierSentiments(events: AnalyticsEvent[]): AnalyticsCarrierSentimentSummary[] {
+  const sentimentEvents = events.filter(
+    (event): event is AnalyticsEvent & { carrier_sentiment: string } =>
+      event.event_type === "agent_outcome" &&
+      typeof event.carrier_sentiment === "string" &&
+      event.carrier_sentiment.trim().length > 0
+  );
+  const grouped = new Map<string, number>();
+
+  for (const event of sentimentEvents) {
+    const key = event.carrier_sentiment.trim();
+    grouped.set(key, (grouped.get(key) ?? 0) + 1);
+  }
+
+  return [...grouped.entries()]
+    .map(([sentiment, count]) => ({
+      sentiment,
+      count,
+      share: toPercentage(count, sentimentEvents.length),
+    }))
+    .sort((left, right) => right.count - left.count);
+}
+
 function getTrendConfig(range: AnalyticsRange): { bucketCount: number; bucketMs: number } {
   switch (range) {
     case "1h":
@@ -361,6 +390,7 @@ function toRecentRequest(event: AnalyticsEvent): AnalyticsRecentRequest {
     status_family: getStatusFamily(event.status_code),
     error: event.error,
     outcome_classification: event.outcome_classification,
+    carrier_sentiment: event.carrier_sentiment ?? null,
     call_duration_ms: event.call_duration_ms ?? null,
     accepted_offer_value: event.accepted_offer_value ?? null,
     decline_reason: event.decline_reason ?? null,

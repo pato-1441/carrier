@@ -78,6 +78,7 @@ export function App() {
           (request.input ?? "").toLowerCase().includes(normalizedQuery) ||
           (request.normalized_input ?? "").toLowerCase().includes(normalizedQuery) ||
           (request.outcome_classification ?? "").toLowerCase().includes(normalizedQuery) ||
+          (request.carrier_sentiment ?? "").toLowerCase().includes(normalizedQuery) ||
           (request.decline_reason ?? "").toLowerCase().includes(normalizedQuery);
         const matchesStatus = statusFilter === "all" || request.status_family === statusFilter;
         const matchesEndpoint = endpointFilter === "all" || request.endpoint === endpointFilter;
@@ -187,6 +188,10 @@ export function App() {
           <MetricCard
             label="Agent outcomes"
             value={data ? compactNumber(data.totals.total_agent_outcomes) : "—"}
+          />
+          <MetricCard
+            label="Sentiments logged"
+            value={data ? compactNumber(data.totals.total_carrier_sentiments) : "—"}
           />
           <MetricCard
             label="Avg call duration"
@@ -306,7 +311,7 @@ export function App() {
           </article>
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)_minmax(18rem,0.8fr)]">
           <article className="border border-zinc-200 bg-white p-5">
             <h2 className="text-sm font-semibold text-zinc-900">Outcome metrics</h2>
             <div className="mt-4 overflow-x-auto">
@@ -352,6 +357,29 @@ export function App() {
           </article>
 
           <article className="border border-zinc-200 bg-white p-5">
+            <h2 className="text-sm font-semibold text-zinc-900">Carrier sentiment</h2>
+            <div className="mt-4 space-y-3">
+              {(data?.carrier_sentiments ?? []).length === 0 ? (
+                <p className="text-sm text-zinc-500">No carrier sentiments have been reported yet.</p>
+              ) : (
+                (data?.carrier_sentiments ?? []).map((item) => (
+                  <div
+                    key={item.sentiment}
+                    className="border border-zinc-200 bg-zinc-50 px-4 py-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-mono text-sm text-zinc-900">{item.sentiment}</p>
+                      <p className="text-xs text-zinc-500">
+                        {numberFormat(item.count)} · {formatPercent(item.share)}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </article>
+
+          <article className="border border-zinc-200 bg-white p-5">
             <h2 className="text-sm font-semibold text-zinc-900">Decline reasons</h2>
             <div className="mt-4 space-y-3">
               {(data?.decline_reasons ?? []).length === 0 ? (
@@ -389,7 +417,7 @@ export function App() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 type="text"
-                placeholder="Search by request id, path, outcome, or decline reason"
+                placeholder="Search by request id, path, outcome, sentiment, or decline reason"
                 className="min-w-0 flex-1 border border-zinc-300 bg-white px-3 py-2 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
               />
 
@@ -665,6 +693,7 @@ function formatRequestDetails(request: AnalyticsRecentRequest) {
   if (request.event_type === "agent_outcome") {
     const parts = [
       request.outcome_classification ?? "agent_outcome",
+      request.carrier_sentiment ? `sentiment:${request.carrier_sentiment}` : null,
       request.call_duration_ms ? formatLatency(request.call_duration_ms) : null,
       request.accepted_offer_value ? formatCurrency(request.accepted_offer_value) : null,
       request.decline_reason ?? null,

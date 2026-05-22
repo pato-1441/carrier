@@ -47,6 +47,7 @@ export type AnalyticsRecentRequest = {
   status_family: "2xx" | "4xx" | "5xx";
   error?: string;
   outcome_classification?: string;
+  carrier_sentiment?: string | null;
   call_duration_ms?: number | null;
   accepted_offer_value?: number | null;
   decline_reason?: string | null;
@@ -68,6 +69,12 @@ export type AnalyticsDeclineReasonSummary = {
   share: number;
 };
 
+export type AnalyticsCarrierSentimentSummary = {
+  sentiment: string;
+  count: number;
+  share: number;
+};
+
 export type AnalyticsDashboardData = {
   range: AnalyticsRange;
   generated_at: string;
@@ -79,6 +86,7 @@ export type AnalyticsDashboardData = {
     error_4xx: number;
     error_5xx: number;
     total_agent_outcomes: number;
+    total_carrier_sentiments: number;
     avg_call_duration_ms: number;
     total_accepted_offer_value: number;
     avg_counteroffer_retries: number;
@@ -86,6 +94,7 @@ export type AnalyticsDashboardData = {
   status_breakdown: AnalyticsStatusBreakdown[];
   endpoints: AnalyticsEndpointSummary[];
   outcome_breakdown: AnalyticsOutcomeBreakdown[];
+  carrier_sentiments: AnalyticsCarrierSentimentSummary[];
   decline_reasons: AnalyticsDeclineReasonSummary[];
   trend: AnalyticsTrendPoint[];
   recent_requests: AnalyticsRecentRequest[];
