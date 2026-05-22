@@ -8,6 +8,7 @@ import type {
 } from "./types";
 
 const RANGE_OPTIONS: AnalyticsRange[] = ["1h", "24h", "7d"];
+const POLLING_INTERVAL_MS = 5_000;
 
 export function App() {
   const [range, setRange] = useState<AnalyticsRange>("24h");
@@ -20,6 +21,14 @@ export function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const deferredSearch = useDeferredValue(search);
   const normalizedQuery = deferredSearch.trim().toLowerCase();
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setReloadTick((current) => current + 1);
+    }, POLLING_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -79,8 +88,8 @@ export function App() {
   const hasAnalytics = (data?.totals.total_requests ?? 0) > 0;
 
   return (
-    <main className="min-h-screen bg-zinc-50">
-      <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-white">
+      <div className="mx-auto max-w-[112rem] space-y-6 px-4 py-8 sm:px-6 lg:px-10">
         <header className="space-y-4">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-950">
@@ -92,7 +101,7 @@ export function App() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white p-1 shadow-sm">
+            <div className="flex items-center gap-2 border border-zinc-200 bg-white p-1">
               {RANGE_OPTIONS.map((option) => (
                 <button
                   key={option}
@@ -104,8 +113,8 @@ export function App() {
                   }
                   className={
                     option === range
-                      ? "rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white"
-                      : "rounded-md px-3 py-1.5 text-sm font-medium text-zinc-600 transition hover:text-zinc-900"
+                      ? "bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white"
+                      : "px-3 py-1.5 text-sm font-medium text-zinc-600 transition hover:text-zinc-900"
                   }
                 >
                   {option}
@@ -117,10 +126,26 @@ export function App() {
               <span className="text-sm text-zinc-500">
                 {data ? `Updated ${formatDateTime(data.generated_at)}` : "Loading analytics"}
               </span>
+              {data?.alert && hasAnalytics ? (
+                <div className="flex items-center gap-3 border border-zinc-200 px-3 py-1.5">
+                  <span
+                    className={
+                      data.alert.severity === "critical"
+                        ? "h-2.5 w-2.5 bg-rose-500"
+                        : data.alert.severity === "warning"
+                          ? "h-2.5 w-2.5 bg-amber-400"
+                          : "h-2.5 w-2.5 bg-emerald-500"
+                    }
+                  />
+                  <span className="text-sm font-medium text-zinc-900">
+                    {formatOperationalLabel(data.alert.severity)}
+                  </span>
+                </div>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setReloadTick((current) => current + 1)}
-                className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+                className="border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
               >
                 Refresh
               </button>
@@ -129,23 +154,8 @@ export function App() {
         </header>
 
         {errorMessage ? (
-          <section className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <section className="border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {errorMessage}
-          </section>
-        ) : null}
-
-        {data?.alert && hasAnalytics ? (
-          <section
-            className={
-              data.alert.severity === "critical"
-                ? "rounded-xl border border-rose-200 bg-rose-50 px-4 py-3"
-                : data.alert.severity === "warning"
-                  ? "rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
-                  : "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3"
-            }
-          >
-            <p className="text-sm font-medium text-zinc-900">{data.alert.title}</p>
-            <p className="mt-1 text-sm text-zinc-600">{data.alert.message}</p>
           </section>
         ) : null}
 
@@ -180,7 +190,7 @@ export function App() {
           />
           <MetricCard
             label="Avg call duration"
-            value={data ? formatLatency(data.totals.avg_call_duration_ms) : "—"}
+            value={data ? formatCallDuration(data.totals.avg_call_duration_ms) : "—"}
           />
           <MetricCard
             label="Accepted offer total"
@@ -193,7 +203,7 @@ export function App() {
         </section>
 
         {!hasAnalytics && !isLoading ? (
-          <section className="rounded-xl border border-dashed border-zinc-300 bg-white px-6 py-10 text-center shadow-sm">
+          <section className="border border-dashed border-zinc-300 bg-white px-6 py-10 text-center">
             <h2 className="text-base font-semibold text-zinc-900">No analytics yet</h2>
             <p className="mt-2 text-sm text-zinc-500">
               This page only shows data that exists in the local analytics JSON file.
@@ -202,7 +212,7 @@ export function App() {
         ) : null}
 
         <section className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-          <article className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <article className="border border-zinc-200 bg-white p-5">
             <h2 className="text-sm font-semibold text-zinc-900">Status breakdown</h2>
             <div className="mt-4 space-y-4">
               {(data?.status_breakdown ?? []).map((item) => (
@@ -213,7 +223,7 @@ export function App() {
                       {numberFormat(item.count)} · {formatPercent(item.share)}
                     </span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
+                  <div className="h-2 overflow-hidden bg-zinc-100">
                     <div
                       className={
                         item.label === "2xx"
@@ -230,7 +240,7 @@ export function App() {
             </div>
           </article>
 
-          <article className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <article className="border border-zinc-200 bg-white p-5">
             <h2 className="text-sm font-semibold text-zinc-900">Endpoints</h2>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full border-collapse text-left">
@@ -268,7 +278,7 @@ export function App() {
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)]">
-          <article className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <article className="border border-zinc-200 bg-white p-5">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold text-zinc-900">Traffic trend</h2>
@@ -282,7 +292,7 @@ export function App() {
             </div>
           </article>
 
-          <article className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <article className="border border-zinc-200 bg-white p-5">
             <h2 className="text-sm font-semibold text-zinc-900">Outcome breakdown</h2>
             <div className="mt-4 space-y-4">
               {(data?.outcome_breakdown ?? []).length === 0 ? (
@@ -297,7 +307,7 @@ export function App() {
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
-          <article className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <article className="border border-zinc-200 bg-white p-5">
             <h2 className="text-sm font-semibold text-zinc-900">Outcome metrics</h2>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full border-collapse text-left">
@@ -325,7 +335,7 @@ export function App() {
                         <td className="py-3 pr-4 text-zinc-600">{numberFormat(item.count)}</td>
                         <td className="py-3 pr-4 text-zinc-600">{formatPercent(item.share)}</td>
                         <td className="py-3 pr-4 text-zinc-600">
-                          {formatLatency(item.avg_call_duration_ms)}
+                          {formatCallDuration(item.avg_call_duration_ms)}
                         </td>
                         <td className="py-3 pr-4 text-zinc-600">
                           {formatCurrency(item.total_accepted_offer_value)}
@@ -341,7 +351,7 @@ export function App() {
             </div>
           </article>
 
-          <article className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <article className="border border-zinc-200 bg-white p-5">
             <h2 className="text-sm font-semibold text-zinc-900">Decline reasons</h2>
             <div className="mt-4 space-y-3">
               {(data?.decline_reasons ?? []).length === 0 ? (
@@ -350,7 +360,7 @@ export function App() {
                 (data?.decline_reasons ?? []).map((item) => (
                   <div
                     key={item.reason}
-                    className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3"
+                    className="border border-zinc-200 bg-zinc-50 px-4 py-3"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-medium text-zinc-900">{item.reason}</p>
@@ -365,7 +375,7 @@ export function App() {
           </article>
         </section>
 
-        <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+        <section className="border border-zinc-200 bg-white">
           <div className="space-y-4 border-b border-zinc-200 p-5">
             <div>
               <h2 className="text-sm font-semibold text-zinc-900">Recent requests</h2>
@@ -380,13 +390,13 @@ export function App() {
                 onChange={(event) => setSearch(event.target.value)}
                 type="text"
                 placeholder="Search by request id, path, outcome, or decline reason"
-                className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                className="min-w-0 flex-1 border border-zinc-300 bg-white px-3 py-2 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
               />
 
               <select
                 value={endpointFilter}
                 onChange={(event) => setEndpointFilter(event.target.value)}
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                className="border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none"
               >
                 <option value="all">All endpoints</option>
                 {(data?.endpoints ?? []).map((endpoint) => (
@@ -401,7 +411,7 @@ export function App() {
                 onChange={(event) =>
                   setStatusFilter(event.target.value as "all" | "2xx" | "4xx" | "5xx")
                 }
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                className="border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none"
               >
                 <option value="all">All statuses</option>
                 <option value="2xx">2xx</option>
@@ -416,7 +426,7 @@ export function App() {
                   setEndpointFilter("all");
                   setStatusFilter("all");
                 }}
-                className="rounded-md border border-zinc-200 bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-200"
+                className="border border-zinc-200 bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-200"
               >
                 Clear
               </button>
@@ -460,7 +470,7 @@ export function App() {
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <article className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+    <article className="border border-zinc-200 bg-white p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</p>
       <p className="mt-3 text-2xl font-semibold text-zinc-950">{value}</p>
     </article>
@@ -470,7 +480,7 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 function TrendChart({ points }: { points: AnalyticsDashboardData["trend"] }) {
   if (points.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-zinc-50 text-sm text-zinc-500">
+      <div className="flex h-64 items-center justify-center border border-dashed border-zinc-200 bg-zinc-50 text-sm text-zinc-500">
         No trend data available.
       </div>
     );
@@ -501,11 +511,11 @@ function TrendChart({ points }: { points: AnalyticsDashboardData["trend"] }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-500">
         <span className="inline-flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-900" />
+          <span className="h-2.5 w-2.5 bg-zinc-900" />
           Requests
         </span>
         <span className="inline-flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-sky-500" />
+          <span className="h-2.5 w-2.5 bg-sky-500" />
           Agent outcomes
         </span>
       </div>
@@ -559,11 +569,11 @@ function OutcomeRow({ item }: { item: AnalyticsOutcomeBreakdown }) {
           {numberFormat(item.count)} · {formatPercent(item.share)}
         </p>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
+      <div className="h-2 overflow-hidden bg-zinc-100">
         <div className="h-full bg-sky-500" style={{ width: `${Math.max(item.share, 6)}%` }} />
       </div>
       <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
-        <span>Avg call {formatLatency(item.avg_call_duration_ms)}</span>
+        <span>Avg call {formatCallDuration(item.avg_call_duration_ms)}</span>
         <span>Accepted {formatCurrency(item.total_accepted_offer_value)}</span>
         <span>Retries {item.avg_counteroffer_retries.toFixed(1)}</span>
       </div>
@@ -584,7 +594,7 @@ function RequestRow({ request }: { request: AnalyticsRecentRequest }) {
       <td className="px-5 py-3 text-zinc-500">{formatTime(request.timestamp)}</td>
       <td className="px-5 py-3">
         <span
-          className={`inline-flex rounded border px-2 py-0.5 text-xs font-medium ${badgeClassName}`}
+          className={`inline-flex border px-2 py-0.5 text-xs font-medium ${badgeClassName}`}
         >
           {request.status_code}
         </span>
@@ -616,6 +626,14 @@ function formatPercent(value: number) {
 
 function formatLatency(value: number) {
   return `${Math.round(value)}ms`;
+}
+
+function formatSeconds(value: number) {
+  return `${(value / 1000).toFixed(1)}s`;
+}
+
+function formatCallDuration(value: number) {
+  return `${formatLatency(value)} / ${formatSeconds(value)}`;
 }
 
 function formatCurrency(value: number) {
@@ -656,4 +674,16 @@ function formatRequestDetails(request: AnalyticsRecentRequest) {
   }
 
   return request.normalized_input ?? request.input ?? "—";
+}
+
+function formatOperationalLabel(severity: AnalyticsDashboardData["alert"]["severity"]) {
+  if (severity === "critical") {
+    return "System disruption detected";
+  }
+
+  if (severity === "warning") {
+    return "Minor issues detected";
+  }
+
+  return "All systems operational";
 }
