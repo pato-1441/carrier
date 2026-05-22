@@ -4,8 +4,10 @@ import { dirname, resolve } from "node:path";
 import type {
   AnalyticsAlert,
   AnalyticsDashboardData,
+  AnalyticsDeclineReasonSummary,
   AnalyticsEndpointSummary,
   AnalyticsEvent,
+  AnalyticsOutcomeBreakdown,
   AnalyticsRange,
   AnalyticsRecentRequest,
   AnalyticsStatusBreakdown,
@@ -61,6 +63,8 @@ export async function getAnalyticsDashboardData(
     totals,
     status_breakdown: buildStatusBreakdown(filteredEvents),
     endpoints: buildEndpointSummaries(filteredEvents),
+    outcome_breakdown: buildOutcomeBreakdown(filteredEvents),
+    decline_reasons: buildDeclineReasons(filteredEvents),
     trend: buildTrend(filteredEvents, range, now),
     recent_requests: sortedEvents.slice(0, 20).map(toRecentRequest),
     alert: buildAlert(sortedEvents),
@@ -108,6 +112,7 @@ function buildTotals(events: AnalyticsEvent[]): AnalyticsDashboardData["totals"]
     (event) => event.status_code >= 400 && event.status_code < 500
   ).length;
   const error5xx = events.filter((event) => event.status_code >= 500).length;
+  const outcomeEvents = events.filter((event) => event.event_type === "agent_outcome");
 
   return {
     total_requests: totalRequests,
@@ -116,6 +121,19 @@ function buildTotals(events: AnalyticsEvent[]): AnalyticsDashboardData["totals"]
     p95_latency_ms: percentile(events.map((event) => event.duration_ms), 95),
     error_4xx: error4xx,
     error_5xx: error5xx,
+    total_agent_outcomes: outcomeEvents.length,
+    avg_call_duration_ms: average(
+      outcomeEvents.map((event) => event.call_duration_ms).filter(isNumber)
+    ),
+    total_accepted_offer_value: roundToSingleDecimal(
+      outcomeEvents
+        .map((event) => event.accepted_offer_value)
+        .filter(isNumber)
+        .reduce((sum, value) => sum + value, 0)
+    ),
+    avg_counteroffer_retries: average(
+      outcomeEvents.map((event) => event.counteroffer_retries).filter(isNumber)
+    ),
   };
 }
 
@@ -198,6 +216,7 @@ function buildTrend(
       bucket_start: new Date(bucketStart).toISOString(),
       label: formatTrendLabel(bucketStart, range),
       total_requests: bucketEvents.length,
+      agent_outcomes: bucketEvents.filter((event) => event.event_type === "agent_outcome").length,
       error_4xx: bucketEvents.filter(
         (event) => event.status_code >= 400 && event.status_code < 500
       ).length,
@@ -205,6 +224,64 @@ function buildTrend(
       avg_latency_ms: average(bucketEvents.map((event) => event.duration_ms)),
     };
   });
+}
+
+function buildOutcomeBreakdown(events: AnalyticsEvent[]): AnalyticsOutcomeBreakdown[] {
+  const outcomeEvents = events.filter(
+    (event): event is AnalyticsEvent & { outcome_classification: string } =>
+      event.event_type === "agent_outcome" && typeof event.outcome_classification === "string"
+  );
+  const grouped = new Map<string, AnalyticsEvent[]>();
+
+  for (const event of outcomeEvents) {
+    const key = event.outcome_classification;
+    const existing = grouped.get(key) ?? [];
+    existing.push(event);
+    grouped.set(key, existing);
+  }
+
+  return [...grouped.entries()]
+    .map(([classification, groupedEvents]) => ({
+      classification,
+      count: groupedEvents.length,
+      share: toPercentage(groupedEvents.length, outcomeEvents.length),
+      avg_call_duration_ms: average(
+        groupedEvents.map((event) => event.call_duration_ms).filter(isNumber)
+      ),
+      total_accepted_offer_value: roundToSingleDecimal(
+        groupedEvents
+          .map((event) => event.accepted_offer_value)
+          .filter(isNumber)
+          .reduce((sum, value) => sum + value, 0)
+      ),
+      avg_counteroffer_retries: average(
+        groupedEvents.map((event) => event.counteroffer_retries).filter(isNumber)
+      ),
+    }))
+    .sort((left, right) => right.count - left.count);
+}
+
+function buildDeclineReasons(events: AnalyticsEvent[]): AnalyticsDeclineReasonSummary[] {
+  const declineEvents = events.filter(
+    (event): event is AnalyticsEvent & { decline_reason: string } =>
+      event.event_type === "agent_outcome" &&
+      typeof event.decline_reason === "string" &&
+      event.decline_reason.trim().length > 0
+  );
+  const grouped = new Map<string, number>();
+
+  for (const event of declineEvents) {
+    const key = event.decline_reason.trim();
+    grouped.set(key, (grouped.get(key) ?? 0) + 1);
+  }
+
+  return [...grouped.entries()]
+    .map(([reason, count]) => ({
+      reason,
+      count,
+      share: toPercentage(count, declineEvents.length),
+    }))
+    .sort((left, right) => right.count - left.count);
 }
 
 function getTrendConfig(range: AnalyticsRange): { bucketCount: number; bucketMs: number } {
@@ -283,6 +360,11 @@ function toRecentRequest(event: AnalyticsEvent): AnalyticsRecentRequest {
     event_type: event.event_type,
     status_family: getStatusFamily(event.status_code),
     error: event.error,
+    outcome_classification: event.outcome_classification,
+    call_duration_ms: event.call_duration_ms ?? null,
+    accepted_offer_value: event.accepted_offer_value ?? null,
+    decline_reason: event.decline_reason ?? null,
+    counteroffer_retries: event.counteroffer_retries ?? null,
   };
 }
 
@@ -293,6 +375,10 @@ function getEndpointLabel(event: AnalyticsEvent): string {
 
   if (event.event_type === "load_lookup") {
     return "/loads/:referenceNumber";
+  }
+
+  if (event.event_type === "agent_outcome") {
+    return "/webhooks/agent-outcome";
   }
 
   return event.path;
@@ -316,6 +402,10 @@ function average(values: number[]): number {
   }
 
   return roundToSingleDecimal(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function isNumber(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 function percentile(values: number[], percentileValue: number): number {

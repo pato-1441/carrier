@@ -81,7 +81,7 @@ app.use("*", async (c, next) => {
   const apiKey = c.req.header("x-api-key");
   const path = new URL(c.req.url).pathname;
 
-  if (path.startsWith("/analytics")) {
+  if (path === "/" || path.startsWith("/analytics")) {
     await next();
     return;
   }
@@ -99,15 +99,7 @@ app.use("*", async (c, next) => {
 });
 
 app.get("/", (c) => {
-  return c.json({
-    service: "carrier-happyrobot-api",
-    endpoints: {
-      validate_mc_number: "GET /mc/:mcNumber/validate",
-      search_load_by_reference: "GET /loads/:referenceNumber",
-      analytics_dashboard: "GET /analytics",
-      analytics_data: "GET /analytics/data?range=24h",
-    },
-  });
+  return c.redirect("/analytics", 302);
 });
 
 app.get("/analytics", async (c) => {
@@ -241,6 +233,99 @@ app.get("/loads/:referenceNumber", (c) => {
   return c.json(load);
 });
 
+app.post("/webhooks/agent-outcome", async (c) => {
+  let payload: unknown;
+
+  try {
+    payload = await c.req.json();
+  } catch {
+    c.set("analyticsEvent", {
+      event_type: "agent_outcome",
+      input: "invalid_json",
+      normalized_input: "invalid_json",
+      error: "Webhook body must be valid JSON.",
+    });
+
+    return c.json(
+      {
+        error: "Webhook body must be valid JSON.",
+      },
+      400
+    );
+  }
+
+  if (!isRecord(payload)) {
+    c.set("analyticsEvent", {
+      event_type: "agent_outcome",
+      input: "invalid_payload",
+      normalized_input: "invalid_payload",
+      error: "Webhook body must be a JSON object.",
+    });
+
+    return c.json(
+      {
+        error: "Webhook body must be a JSON object.",
+      },
+      400
+    );
+  }
+
+  const rawClassification = payload.outcome_classification;
+  const normalizedClassification = normalizeOutcomeClassification(rawClassification);
+
+  if (!normalizedClassification) {
+    c.set("analyticsEvent", {
+      event_type: "agent_outcome",
+      input: toOptionalString(rawClassification) ?? "missing_outcome_classification",
+      normalized_input: "missing_outcome_classification",
+      error: "outcome_classification is required.",
+    });
+
+    return c.json(
+      {
+        error: "outcome_classification is required.",
+      },
+      400
+    );
+  }
+
+  const outcomeReasoning = toOptionalString(payload.outcome_reasoning);
+  const declineReason = toOptionalString(payload.decline_reason);
+  const callDurationMs = toOptionalNumber(payload.call_duration);
+  const acceptedOfferValue = toOptionalNumber(payload.accepted_offer_value);
+  const counterofferRetries = firstDefinedNumber(
+    toOptionalNumber(payload.counteroffer_retries),
+    toOptionalNumber(payload.counteroffers_retries)
+  );
+
+  c.set("analyticsEvent", {
+    event_type: "agent_outcome",
+    input: normalizedClassification,
+    normalized_input: normalizedClassification,
+    outcome_classification: normalizedClassification,
+    outcome_reasoning: outcomeReasoning,
+    call_duration_ms: callDurationMs,
+    accepted_offer_value: acceptedOfferValue,
+    decline_reason: declineReason,
+    counteroffer_retries: counterofferRetries,
+  });
+
+  return c.json(
+    {
+      ok: true,
+      received: {
+        outcome_classification: normalizedClassification,
+        outcome_reasoning: outcomeReasoning ?? null,
+        call_duration_ms: callDurationMs,
+        accepted_offer_value: acceptedOfferValue,
+        decline_reason: declineReason ?? null,
+        counteroffer_retries: counterofferRetries,
+      },
+    },
+    202
+  );
+});
+
 async function serveAnalyticsFrontend(c: Context, relativePath: string) {
   try {
     const filePath = resolve(CLIENT_DIST_DIRECTORY, relativePath);
@@ -271,6 +356,51 @@ async function serveAnalyticsFrontend(c: Context, relativePath: string) {
 
     return c.notFound();
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalizedValue = value.trim();
+
+  return normalizedValue.length > 0 ? normalizedValue : undefined;
+}
+
+function normalizeOutcomeClassification(value: unknown): string | undefined {
+  const normalizedValue = toOptionalString(value);
+
+  return normalizedValue ? normalizedValue.toLowerCase() : undefined;
+}
+
+function toOptionalNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value.trim())
+        : Number.NaN;
+
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function firstDefinedNumber(...values: Array<number | null>): number | null {
+  for (const value of values) {
+    if (value !== null) {
+      return value;
+    }
+  }
+
+  return null;
 }
 
 function getMimeType(filePath: string): string {

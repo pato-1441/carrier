@@ -25,15 +25,13 @@ after(async () => {
 });
 
 describe("API key protection", () => {
-  it("returns 401 when the API key is missing", async () => {
+  it("redirects the home page to /analytics without an API key", async () => {
     process.env.API_KEY = "duckyapikeyhappyrobot21may";
 
     const response = await app.request("/");
 
-    assert.equal(response.status, 401);
-
-    const body = (await response.json()) as Record<string, unknown>;
-    assert.equal(body.error, "Unauthorized");
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "/analytics");
     assert.ok(response.headers.get("x-request-id"));
   });
 
@@ -79,6 +77,21 @@ describe("GET /analytics/data", () => {
         docket_number: "123456",
         error: "FMCSA unavailable",
       },
+      {
+        request_id: "req_webhook",
+        timestamp: new Date().toISOString(),
+        method: "POST",
+        path: "/webhooks/agent-outcome",
+        status_code: 202,
+        duration_ms: 18,
+        event_type: "agent_outcome",
+        input: "success",
+        normalized_input: "success",
+        outcome_classification: "success",
+        call_duration_ms: 74905,
+        accepted_offer_value: 12300,
+        counteroffer_retries: 2,
+      },
     ];
 
     await writeFile(analyticsFilePath, JSON.stringify(events, null, 2));
@@ -90,11 +103,17 @@ describe("GET /analytics/data", () => {
     const body = (await response.json()) as Record<string, unknown>;
     const totals = body.totals as Record<string, unknown>;
     const endpoints = body.endpoints as Array<Record<string, unknown>>;
+    const outcomeBreakdown = body.outcome_breakdown as Array<Record<string, unknown>>;
+    const trend = body.trend as Array<Record<string, unknown>>;
 
-    assert.equal(totals.total_requests, 2);
+    assert.equal(totals.total_requests, 3);
     assert.equal(totals.error_5xx, 1);
-    assert.equal(endpoints.length, 2);
+    assert.equal(totals.total_agent_outcomes, 1);
+    assert.equal(totals.total_accepted_offer_value, 12300);
+    assert.equal(endpoints.length, 3);
     assert.equal(endpoints[0]?.endpoint, "/loads/:referenceNumber");
+    assert.equal(outcomeBreakdown[0]?.classification, "success");
+    assert.equal(trend.some((point) => point.agent_outcomes === 1), true);
   });
 });
 
@@ -212,5 +231,52 @@ describe("GET /mc/:mcNumber/validate", () => {
     assert.equal(body.valid_format, true);
     assert.equal(body.found, true);
     assert.equal(body.normalized_mc_number, "MC654321");
+  });
+});
+
+describe("POST /webhooks/agent-outcome", () => {
+  it("stores normalized webhook analytics fields", async () => {
+    process.env.API_KEY = "duckyapikeyhappyrobot21may";
+
+    const response = await app.request("/webhooks/agent-outcome", {
+      method: "POST",
+      headers: {
+        ...AUTH_HEADERS,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        outcome_classification: "Not_Interested",
+        outcome_reasoning:
+          "No conversation content provided; cannot determine outcome, treating as not interested due to missing information.",
+        call_duration: "74905",
+        accepted_offer_value: "12300",
+        decline_reason: "Out of salary range.",
+        counteroffers_retries: 2,
+      }),
+    });
+
+    assert.equal(response.status, 202);
+
+    const body = (await response.json()) as Record<string, unknown>;
+    const received = body.received as Record<string, unknown>;
+
+    assert.equal(received.outcome_classification, "not_interested");
+    assert.equal(received.call_duration_ms, 74905);
+    assert.equal(received.accepted_offer_value, 12300);
+    assert.equal(received.counteroffer_retries, 2);
+
+    const events = JSON.parse(
+      await readFile(analyticsFilePath, "utf8")
+    ) as AnalyticsEvent[];
+    const [event] = events;
+
+    assert.equal(events.length, 1);
+    assert.equal(event.event_type, "agent_outcome");
+    assert.equal(event.outcome_classification, "not_interested");
+    assert.equal(event.call_duration_ms, 74905);
+    assert.equal(event.accepted_offer_value, 12300);
+    assert.equal(event.decline_reason, "Out of salary range.");
+    assert.equal(event.counteroffer_retries, 2);
+    assert.equal(event.status_code, 202);
   });
 });

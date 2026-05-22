@@ -1,12 +1,13 @@
 # Carrier HappyRobot API
 
-A small Hono API with two endpoints and a React analytics frontend:
+A small Hono API with business endpoints, an agent outcome webhook, and a React analytics frontend:
 
 - validate an MC number against the FMCSA public API
 - return fake load data for a reference number in the format `ABC12345`
+- ingest end-of-call agent outcome webhooks
 - expose a lightweight React analytics dashboard backed by the local JSON analytics file
 
-All endpoints require an API key in the `x-api-key` header.
+All API and webhook endpoints require an API key in the `x-api-key` header.
 
 ## Requirements
 
@@ -101,7 +102,7 @@ pnpm test
 
 ### `GET /`
 
-Returns the service name and the available routes.
+Redirects to `/analytics`.
 
 ### `GET /mc/:mcNumber/validate`
 
@@ -142,6 +143,37 @@ Returned load shape:
 }
 ```
 
+### `POST /webhooks/agent-outcome`
+
+Stores the final agent outcome payload in the same local analytics JSON file used by the dashboard.
+
+Example:
+
+```bash
+curl -i http://localhost:3000/webhooks/agent-outcome \
+  -H 'x-api-key: your_internal_api_key' \
+  -H 'content-type: application/json' \
+  -d '{
+    "outcome_classification": "not_interested",
+    "outcome_reasoning": "No conversation content provided; cannot determine outcome.",
+    "call_duration": 74905,
+    "accepted_offer_value": 12300,
+    "decline_reason": "Out of salary range.",
+    "counteroffer_retries": 2
+  }'
+```
+
+Accepted payload fields:
+
+- `outcome_classification` required
+- `outcome_reasoning` optional
+- `call_duration` optional, stored as milliseconds
+- `accepted_offer_value` optional
+- `decline_reason` optional
+- `counteroffer_retries` optional
+
+For compatibility, the webhook also accepts `counteroffers_retries`.
+
 ### `GET /analytics`
 
 Returns the React analytics dashboard shell.
@@ -151,6 +183,8 @@ The page reads from the same local JSON analytics file used by the API and inclu
 - request volume and latency summary cards
 - response status breakdown
 - endpoint-level performance summaries
+- agent outcome totals and decline reason summaries
+- request and webhook trend visualization
 - recent request activity with range and filter controls
 
 ### `GET /analytics/data`
@@ -163,6 +197,8 @@ Optional query parameter:
 - `range=24h`
 - `range=7d`
 
+The JSON response now includes webhook-driven aggregates such as `outcome_breakdown`, `decline_reasons`, and outcome totals inside `totals`.
+
 ## Common errors
 
 - `401 Unauthorized`: missing or invalid `x-api-key`
@@ -171,11 +207,12 @@ Optional query parameter:
 
 ## Analytics file
 
-Each successful or failed call to these two endpoints is stored as a JSON record in the analytics file:
+Each successful or failed call to these routes is stored as a JSON record in the analytics file:
 
 - `GET /mc/:mcNumber/validate`
 - `GET /loads/:referenceNumber`
+- `POST /webhooks/agent-outcome`
 
-Each record includes request metadata such as timestamp, request id, path, status code, duration, input, and validation outcome.
+Each record includes request metadata such as timestamp, request id, path, status code, duration, and event-specific fields like validation results or agent outcome metrics.
 
 This is intentionally lightweight and works well for small internal analytics without deploying a database.
