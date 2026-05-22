@@ -40,6 +40,31 @@ Notes:
 - `ANALYTICS_FILE_PATH` controls where request analytics are stored locally
 - if the FMCSA key is missing or rejected, the MC validation endpoint will return `502`
 
+## One-command bootstrap
+
+Run the bootstrap script from the repository root:
+
+```bash
+chmod +x scripts/bootstrap.sh
+./scripts/bootstrap.sh
+```
+
+The script:
+
+- verifies `pnpm` is installed
+- creates `.env` from `.env.example` if needed
+- creates the local `data` directory if missing
+- installs dependencies with `pnpm install`
+- runs the full test suite with `pnpm test`
+
+After bootstrap finishes, start the app with:
+
+```bash
+pnpm run dev
+```
+
+The API will run on `http://localhost:3000` and the analytics dashboard will be available at `http://localhost:3000/analytics`.
+
 ## Install and run locally
 
 ```bash
